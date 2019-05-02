@@ -107,6 +107,16 @@ namespace Google.Apis.Auth.OAuth2
         public static GoogleCredential GetApplicationDefault() => Task.Run(() => GetApplicationDefaultAsync()).Result;
 
         /// <summary>
+        /// Synchronously returns the Application Default Credentials, optionally writing diagnostic information to the given writer.
+        /// Note that this method does not use any cached credentials, unlike <see cref="GetApplicationDefault"/>. This method
+        /// exists for diagnostic purposes, to help determine where credentials are being loaded from.
+        /// </summary>
+        /// <param name="diagnosticWriter">The writer to use to record diagnostic information. May be null.</param>
+        /// <returns>The application default credentials.</returns>
+        public static GoogleCredential GetApplicationDefaultWithDiagnostics(TextWriter diagnosticWriter) =>
+            defaultCredentialProvider.CreateDefaultCredentialAsync(diagnosticWriter).Result;
+
+        /// <summary>
         /// Loads credential from stream containing JSON credential data.
         /// <para>
         /// The stream can contain a Service Account key file in JSON format from the Google Developers

@@ -66,9 +66,9 @@ namespace Google.Apis.Auth.OAuth2
         private readonly Lazy<Task<GoogleCredential>> cachedCredentialTask;
 
         /// <summary>Constructs a new default credential provider.</summary>
-        public DefaultCredentialProvider()
+        internal DefaultCredentialProvider()
         {
-            cachedCredentialTask = new Lazy<Task<GoogleCredential>>(CreateDefaultCredentialAsync);
+            cachedCredentialTask = new Lazy<Task<GoogleCredential>>(() => CreateDefaultCredentialAsync(null));
         }
 
         /// <summary>
@@ -79,18 +79,20 @@ namespace Google.Apis.Auth.OAuth2
         public Task<GoogleCredential> GetDefaultCredentialAsync() => cachedCredentialTask.Value;
 
         /// <summary>Creates a new default credential.</summary>
-        private async Task<GoogleCredential> CreateDefaultCredentialAsync()
+        internal async Task<GoogleCredential> CreateDefaultCredentialAsync(TextWriter diagnosticWriter)
         {
             // 1. First try the environment variable.
             string credentialPath = GetEnvironmentVariable(CredentialEnvironmentVariable);
             if (!String.IsNullOrWhiteSpace(credentialPath))
             {
+                diagnosticWriter?.WriteLine($"Environment variable {CredentialEnvironmentVariable} has value {credentialPath}. Trying to load credentials from file.");
                 try
                 {
                     return CreateDefaultCredentialFromFile(credentialPath);
                 }
                 catch (Exception e)
                 {
+                    diagnosticWriter?.WriteLine($"Failed to load credentials: {e.GetType().Name}/{e.Message}");
                     // Catching generic exception type because any corrupted file could manifest in different ways
                     // including but not limited to the System, System.IO or from the Newtonsoft.Json namespace.
                     throw new InvalidOperationException(
@@ -101,9 +103,10 @@ namespace Google.Apis.Auth.OAuth2
                             CredentialEnvironmentVariable), e);
                 }
             }
-            
+
             // 2. Then try the well known file.
             credentialPath = GetWellKnownCredentialFilePath();
+            diagnosticWriter?.WriteLine($"Environment variable {CredentialEnvironmentVariable} has no value. Trying to load credentials from {credentialPath}.");
             if (!String.IsNullOrWhiteSpace(credentialPath))
             {
                 try
@@ -112,16 +115,19 @@ namespace Google.Apis.Auth.OAuth2
                 }
                 catch (FileNotFoundException)
                 {
+                    diagnosticWriter?.WriteLine($"Well-known credential file {credentialPath} not found.");
                     // File is not present, eat the exception and move on to the next check.
                     Logger.Debug("Well-known credential file {0} not found.", credentialPath);
                 }
                 catch (DirectoryNotFoundException)
                 {
+                    diagnosticWriter?.WriteLine($"Well-known credential file {credentialPath} not found.");
                     // Directory not present, eat the exception and move on to the next check.
                     Logger.Debug("Well-known credential file {0} not found.", credentialPath);
                 }
                 catch (Exception e)
                 {
+                    diagnosticWriter?.WriteLine($"Failed to load credentials: {e.GetType().Name}/{e.Message}");
                     throw new InvalidOperationException(
                         String.Format("Error reading credential file from location {0}: {1}"
                             + "\nPlease rerun 'gcloud auth login' to regenerate credentials file.",
@@ -130,13 +136,16 @@ namespace Google.Apis.Auth.OAuth2
                 }
             }
 
-            // 3. Then try the compute engine.     
+            // 3. Then try the compute engine.
+            diagnosticWriter?.WriteLine($"Checking if we're running on ComputeEngine.");
             Logger.Debug("Checking whether the application is running on ComputeEngine.");
             if (await ComputeCredential.IsRunningOnComputeEngine().ConfigureAwait(false))
             {
+                diagnosticWriter?.WriteLine($"Running on ComputeEngine. Using ComputeEngine credentials.");
                 Logger.Debug("ComputeEngine check passed. Using ComputeEngine Credentials.");
                 return new GoogleCredential(new ComputeCredential());
             }
+            diagnosticWriter?.WriteLine($"Not running on ComputeEngine. No further options are available by default.");
 
             // If everything we tried has failed, throw an exception.
             throw new InvalidOperationException(
